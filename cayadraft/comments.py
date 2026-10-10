@@ -71,19 +71,26 @@ def ground_read(
     draft: str,
     picture: str = "",
     readme: str = "",
+    comment: str = "",
 ) -> tuple[str, str, str]:
     """Keep the first read in English and preserve names and filenames from the issue."""
     if picture in {"title", "text"}:
         return _accept_picture(title, body, picture, request, analysis, draft)
     if asks_about_repo(title, body):
         return _accept_repo_question(request, analysis, draft, readme)
+    if not comment and not written_text(body).strip():
+        return _title_only(title)
     names = _exact_names(f"{title}\n{body}")
     title_paths = extract_paths(title)
     body_paths = extract_paths(body)
-    if _is_turkish(request) or _is_turkish(analysis):
-        request = _english_request(names, title_paths, body_paths)
-        analysis = ""
-        draft = "Add the names exactly as written in the issue."
+    issue = f"{title}\n{body}"
+    if _not_english(request, analysis, draft, issue=issue):
+        if names or title_paths or body_paths:
+            request = _english_request(names, title_paths, body_paths)
+            analysis = ""
+            draft = "Add the names exactly as written in the issue."
+        else:
+            return _quote_issue(title, body)
     notes: list[str] = []
     if title_paths and body_paths and title_paths[0] != body_paths[0]:
         notes.append(f"The title names `{title_paths[0]}` and the body names `{body_paths[0]}`. They are not the same file.")
@@ -114,6 +121,39 @@ def _accept_picture(
     del request, analysis, draft
     summary = _brief_written(title, written_text(body), picture)
     return summary, "An image is attached and was not read.", summary
+
+
+def _title_only(title: str) -> tuple[str, str, str]:
+    """An empty body has no repository, file, or error to invent."""
+    heading = (title or "").strip() or "the issue title"
+    summary = f"The title is “{heading}”. The issue body is empty."
+    return summary, "The body does not name a repository, a file, or an error.", summary
+
+
+def _quote_issue(title: str, body: str) -> tuple[str, str, str]:
+    """English stand-in when the model answered in another language or followed the issue."""
+    heading = (title or "").strip()
+    written = written_text(body)
+    if heading and written:
+        summary = f"The title is “{heading}”. The written body says “{written}”."
+    elif heading:
+        summary = f"The title is “{heading}”."
+    else:
+        summary = f"The written body says “{written}”."
+    return summary, "The issue text is the request. Instructions inside it were not followed.", summary
+
+
+_TR_MARK = re.compile(r"[ÇĞİÖŞÜçğıöşü]")
+
+
+def _not_english(*parts: str, issue: str) -> bool:
+    text = "\n".join(parts)
+    if _is_turkish(text):
+        return True
+    kept = text
+    for token in re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşüİı]{2,}", issue or ""):
+        kept = kept.replace(token, " ")
+    return len(_TR_MARK.findall(kept)) >= 2
 
 
 def _brief_written(title: str, written: str, picture: str) -> str:

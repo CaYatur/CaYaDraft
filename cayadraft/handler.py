@@ -558,7 +558,7 @@ class Handler:
         request, analysis, draft = parse_analysis(raw)
         if not analysis and not draft:
             analysis = raw
-        return ground_read(title, body, request, analysis, draft, picture, readme)
+        return ground_read(title, body, request, analysis, draft, picture, readme, comment)
 
     def _summarize_pull(self, title: str, body: str, stats: str, notes: str) -> tuple[str, str, str]:
         try:
